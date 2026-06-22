@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pandas to GeoPandas Visualizer</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f8fafc;
+            color: #0f172a;
+            margin: 0;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            border: 1px solid #e2e8f0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        h3 {
+            margin-top: 0;
+            color: #1e293b;
+            font-size: 1.2rem;
+            border-bottom: 2px solid #f1f5f9;
+            padding-bottom: 10px;
+            text-align: center;
+        }
+        .main-layout {
+            display: flex;
+            gap: 20px;
+            align-items: stretch;
+        }
+        .table-section {
+            flex: 1.5;
+            background: #f1f5f9;
+            border-radius: 8px;
+            padding: 15px;
+            border: 1px solid #cbd5e1;
+            display: flex;
+            flex-direction: column;
+        }
+        .map-section {
+            flex: 1;
+            background: #e2e8f0;
+            border-radius: 8px;
+            border: 2px dashed #94a3b8;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+            min-height: 200px;
+            transition: all 0.5s;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: monospace;
+            font-size: 0.85rem;
+            background: white;
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        th, td {
+            padding: 8px 12px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        th {
+            background: #cbd5e1;
+            color: #1e293b;
+            font-weight: bold;
+        }
+        .coord-col { transition: background-color 0.3s; }
+        .coord-active { background-color: #dbeafe; color: #1d4ed8; font-weight: bold; }
+        
+        .geo-col {
+            width: 0;
+            opacity: 0;
+            padding: 0;
+            overflow: hidden;
+            transition: all 0.6s ease-in-out;
+            background: #ecfdf5;
+            color: #047857;
+            font-weight: bold;
+            white-space: nowrap;
+        }
+        .geo-col.visible {
+            width: 140px;
+            opacity: 1;
+            padding: 8px 12px;
+        }
+        .geo-col-header { background: #10b981; color: white; }
+
+        .map-overlay-text {
+            color: #64748b;
+            font-weight: bold;
+            text-align: center;
+            padding: 20px;
+            font-size: 0.9rem;
+            z-index: 2;
+        }
+        .map-grid {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-image: linear-gradient(#cbd5e1 1px, transparent 1px), linear-gradient(90deg, #cbd5e1 1px, transparent 1px);
+            background-size: 20px 20px;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+        .map-active .map-grid { opacity: 0.4; }
+        .map-active { background: #f8fafc; border-style: solid; border-color: #3b82f6;}
+        
+        .point {
+            position: absolute;
+            width: 12px;
+            height: 12px;
+            background: #ef4444;
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 0 5px rgba(0,0,0,0.3);
+            transform: translate(-50%, -50%) scale(0);
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 10;
+        }
+        .point-label {
+            position: absolute;
+            font-size: 0.7rem;
+            font-weight: bold;
+            color: #1e293b;
+            background: rgba(255,255,255,0.8);
+            padding: 2px 4px;
+            border-radius: 3px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            margin-top: 10px;
+        }
+        button.run-btn {
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-size: 1rem;
+            box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+        }
+        button.run-btn:hover:not(:disabled) { background-color: #2563eb; }
+        button:disabled { opacity: 0.6; cursor: not-allowed; }
+        
+        .explanation {
+            background: #e0f2fe;
+            border-left: 4px solid #0284c7;
+            padding: 15px;
+            border-radius: 4px;
+            color: #0369a1;
+            font-size: 0.95rem;
+            text-align: center;
+            line-height: 1.5;
+            min-height: 45px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h3>From Pandas to GeoPandas</h3>
+    
+    <div class="main-layout">
+        <div class="table-section">
+            <div style="font-weight:bold; color:#475569; margin-bottom:10px; font-size:0.9rem; text-transform:uppercase;">Data Table</div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>City</th>
+                        <th class="coord-col">X (Lon)</th>
+                        <th class="coord-col">Y (Lat)</th>
+                        <th class="geo-col geo-col-header" id="col-head-geo">geometry</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Bern</td>
+                        <td class="coord-col">7.44</td>
+                        <td class="coord-col">46.94</td>
+                        <td class="geo-col" id="geo-1"></td>
+                    </tr>
+                    <tr>
+                        <td>Basel</td>
+                        <td class="coord-col">7.58</td>
+                        <td class="coord-col">47.55</td>
+                        <td class="geo-col" id="geo-2"></td>
+                    </tr>
+                    <tr>
+                        <td>Locarno</td>
+                        <td class="coord-col">8.79</td>
+                        <td class="coord-col">46.16</td>
+                        <td class="geo-col" id="geo-3"></td>
+                    </tr>
+                </tbody>
+            </table>
+            
+            <div class="controls">
+                <button class="run-btn" id="run-btn" onclick="runTransformation()">gpd.points_from_xy(df['X'], df['Y'])</button>
+            </div>
+        </div>
+
+        <div class="map-section" id="map-section">
+            <div class="map-overlay-text" id="map-text">No Spatial Data Found<br><span style="font-weight:normal; font-size:0.8rem;">Table is blind to physical space</span></div>
+            <div class="map-grid"></div>
+            <div class="point" id="pt-1" style="left: 30%; top: 50%;"></div>
+            <div class="point-label" id="lbl-1" style="left: 30%; top: 55%;">Bern</div>
+            
+            <div class="point" id="pt-2" style="left: 40%; top: 20%;"></div>
+            <div class="point-label" id="lbl-2" style="left: 40%; top: 25%;">Basel</div>
+            
+            <div class="point" id="pt-3" style="left: 70%; top: 80%;"></div>
+            <div class="point-label" id="lbl-3" style="left: 70%; top: 85%;">Locarno</div>
+        </div>
+    </div>
+    
+    <div class="explanation" id="explanation">
+        The raw dataset is loaded. Click the button to fuse the X and Y columns into a spatially-aware GeoSeries.
+    </div>
+</div>
+
+<script>
+    function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+    async function runTransformation() {
+        document.getElementById('run-btn').disabled = true;
+        const exp = document.getElementById('explanation');
+        const coords = document.querySelectorAll('.coord-col');
+        const geos = document.querySelectorAll('.geo-col');
+        
+        // Step 1: Highlight X and Y
+        exp.innerHTML = "<b>Step 1:</b> GeoPandas extracts the raw <code>X</code> and <code>Y</code> numeric columns.";
+        coords.forEach(el => el.classList.add('coord-active'));
+        await sleep(1200);
+
+        // Step 2: Slide in geometry column
+        exp.innerHTML = "<b>Step 2:</b> A new, dedicated <code>geometry</code> column is created in the DataFrame.";
+        geos.forEach(el => el.classList.add('visible'));
+        await sleep(1000);
+
+        // Step 3: Populate Shapely objects
+        exp.innerHTML = "<b>Step 3:</b> The numbers are mathematically fused into <code>Point</code> objects (Shapely primitives).";
+        document.getElementById('geo-1').innerHTML = "POINT (7.44 46.94)";
+        document.getElementById('geo-2').innerHTML = "POINT (7.58 47.55)";
+        document.getElementById('geo-3').innerHTML = "POINT (8.79 46.16)";
+        coords.forEach(el => el.classList.remove('coord-active'));
+        await sleep(1200);
+
+        // Step 4: Activate Map
+        exp.innerHTML = "<b>Success!</b> The DataFrame is now a <b>GeoDataFrame</b>. It understands physical space and can be instantly mapped or analyzed.";
+        const mapSec = document.getElementById('map-section');
+        document.getElementById('map-text').style.display = 'none';
+        mapSec.classList.add('map-active');
+        
+        // Pop in markers
+        document.getElementById('pt-1').style.transform = "translate(-50%, -50%) scale(1)";
+        document.getElementById('lbl-1').style.opacity = "1";
+        await sleep(300);
+        document.getElementById('pt-2').style.transform = "translate(-50%, -50%) scale(1)";
+        document.getElementById('lbl-2').style.opacity = "1";
+        await sleep(300);
+        document.getElementById('pt-3').style.transform = "translate(-50%, -50%) scale(1)";
+        document.getElementById('lbl-3').style.opacity = "1";
+        
+        // Transform button to Reset
+        const btn = document.getElementById('run-btn');
+        btn.innerHTML = "Reset Visualizer";
+        btn.style.backgroundColor = "#64748b";
+        btn.onclick = resetVisualizer;
+        btn.disabled = false;
+    }
+
+    function resetVisualizer() {
+        // Reset Map
+        const mapSec = document.getElementById('map-section');
+        mapSec.classList.remove('map-active');
+        document.getElementById('map-text').style.display = 'block';
+        
+        for(let i=1; i<=3; i++) {
+            document.getElementById(`pt-${i}`).style.transform = "translate(-50%, -50%) scale(0)";
+            document.getElementById(`lbl-${i}`).style.opacity = "0";
+            document.getElementById(`geo-${i}`).innerHTML = "";
+        }
+
+        // Reset Table
+        document.querySelectorAll('.geo-col').forEach(el => el.classList.remove('visible'));
+        
+        // Reset Button & Text
+        const btn = document.getElementById('run-btn');
+        btn.innerHTML = "gpd.points_from_xy(df['X'], df['Y'])";
+        btn.style.backgroundColor = "#3b82f6";
+        btn.onclick = runTransformation;
+        
+        document.getElementById('explanation').innerHTML = "The raw dataset is loaded. Click the button to fuse the X and Y columns into a spatially-aware GeoSeries.";
+    }
+</script>
+
+</body>
+</html>
